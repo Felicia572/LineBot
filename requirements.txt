@@ -1,0 +1,5 @@
+Flask==3.0.3
+yfinance==0.2.43
+line-bot-sdk==3.13.0
+matplotlib==3.9.2
+pandas==2.2.2
