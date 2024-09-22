@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>添加收藏股票</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold mb-6 text-center">添加收藏股票</h1>
+        <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="stockInput">
+                    股票代碼
+                </label>
+                <input
+                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                    id="stockInput" type="text" placeholder="輸入股票代碼">
+                <!-- 用於即時顯示建議的列表 -->
+                <ul id="suggestions" class="bg-white border border-gray-300 rounded mt-1 hidden"></ul>
+            </div>
+            <div class="mb-4">
+                <ul id="selectedStocks" class="space-y-2"></ul>
+            </div>
+            <div class="flex items-center justify-between">
+                <button
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    type="button" onclick="addToFavorites()">
+                    添加到收藏
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let liffId = "{{ liff_id }}";
+        let userId = null;
+        let stocks = [];
+
+        document.addEventListener("DOMContentLoaded", function () {
+            initializeLiff();
+        });
+
+        liff.init({ liffId: liffId })
+            .then(() => {
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                } else {
+                    liff.getProfile().then(profile => {
+                        userId = profile.userId;  // 獲取 userId
+                    }).catch(err => {
+                        console.error('Error getting user profile:', err);  // 捕捉 getProfile() 錯誤
+                    });
+                }
+            })
+            .catch(err => {
+                console.error('LIFF Initialization failed', err);  // 捕捉 init() 錯誤
+            });
+
+
+        // 獲取股票代碼並存儲
+        fetch('/api/stocks')
+            .then(response => response.json())
+            .then(data => {
+                stocks = data; // 存儲股票列表
+            })
+            .catch(error => console.error('Error fetching stock symbols:', error));
+
+        // 監聽輸入框輸入事件
+        const stockInput = document.getElementById('stockInput');
+        const suggestionsList = document.getElementById('suggestions');
+
+        stockInput.addEventListener('input', function () {
+            const inputValue = stockInput.value.trim().toLowerCase();
+            suggestionsList.innerHTML = ''; // 清空建議列表
+
+            if (inputValue.length > 1) { // 修改為需要至少兩個字元才進行搜尋
+                // 優先篩選匹配前綴的股票代碼和名稱
+                const filteredStocks = stocks.filter(stock =>
+                    stock.code.toLowerCase().startsWith(inputValue) ||
+                    stock.name.toLowerCase().startsWith(inputValue)
+                );
+
+                if (filteredStocks.length > 0) {
+                    filteredStocks.forEach(stock => {
+                        const li = document.createElement('li');
+                        li.className = 'cursor-pointer p-2 hover:bg-gray-200';
+                        li.textContent = `${stock.code} - ${stock.name}`;
+                        li.addEventListener('click', () => {
+                            stockInput.value = stock.code; // 當用戶選擇某個建議時，將股票代碼放入輸入框
+                            suggestionsList.innerHTML = ''; // 清空建議列表
+                            suggestionsList.classList.add('hidden'); // 隱藏建議框
+                        });
+                        suggestionsList.appendChild(li);
+                    });
+                    suggestionsList.classList.remove('hidden'); // 顯示建議列表
+                } else {
+                    suggestionsList.classList.add('hidden'); // 如果沒有符合結果，隱藏建議列表
+                }
+            } else {
+                suggestionsList.classList.add('hidden'); // 沒有輸入或輸入不到兩個字時隱藏建議列表
+            }
+        });
+
+        function addToFavorites() {
+            const selectedStock = stockInput.value;
+
+            if (!userId) {
+                alert('無法獲取 userId，請確認您已登入 LINE');
+                return;
+            }
+
+            if (selectedStock) {
+                const selectedStocksList = document.getElementById('selectedStocks');
+                const li = document.createElement('li');
+                li.textContent = selectedStock;
+                selectedStocksList.appendChild(li);
+                stockInput.value = '';  // 清空輸入框
+                suggestionsList.innerHTML = '';  // 清空建議列表
+                suggestionsList.classList.add('hidden');  // 隱藏建議框
+
+                // 將選中的股票代碼發送到後端 API
+                fetch('/api/add_favorites', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: userId,  // LIFF 獲取的用戶 ID
+                        stockCodes: [selectedStock]  // 將選中的股票代碼放進數組發送
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('收藏添加成功');
+                        } else {
+                            alert('收藏添加失敗: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error adding stock to favorites:', error);
+                    });
+            }
+        }
+
+    </script>
+</body>
+
+</html>
